@@ -17,7 +17,9 @@ class PayController extends Controller
 
     protected function _initialize()
     {
-
+        /**
+         * 为了数据安全传输起见  我设置了POST请求方式
+         */
         if (!IS_POST) {
             self::return_err('error request method');
         }
@@ -117,11 +119,13 @@ class PayController extends Controller
     }
 
     /**
-     * TODO 此处是我自己的业务逻辑处理操作
+     * TODO 此处是我自己的业务逻辑处理
+     * 因为不同的成型项目 一定会有自己的审核逻辑，可自行覆盖
      * @param $order_sn 订单号
      */
     public function prepayOrderDeal($order_sn)
     {
+        return;
         $orderModel = new OrderModel();
         $checkStock = $orderModel->checkGoodsStockBySn($order_sn);
         if (!$checkStock) {
@@ -146,6 +150,8 @@ class PayController extends Controller
      * 进行微信支付回调后的处理
      * TODO 此处的后续处理为本人的专属逻辑，请自行补充对应的业务逻辑即可
      * @param $result
+     * TODO 强烈建议将其转化为 json 字符串形式，保存在数据表中，方便后期的微信退款操作
+     * tip:$wx_pay_result_json = json_encode($result);
      */
     public function payNotifyOrderDeal($result)
     {
@@ -162,7 +168,7 @@ class PayController extends Controller
     {
         $config = $this->config;
         $prepay_id = I('post.prepay_id');
-
+        //此处获得的 $prepay_id 建议保存到订单数据表中，可方便后期"服务通知"业务的使用
         $data = array(
             'appId' => $config['appid'],
             'timeStamp' => time(),
@@ -174,7 +180,10 @@ class PayController extends Controller
         $this->ajaxReturn($data);
     }
 
-    //微信支付回调验证
+    /**
+     * 微信支付回调验证
+     * @return array|bool
+     */
     public function notify()
     {
         $xml = $GLOBALS['HTTP_RAW_POST_DATA'];
@@ -215,8 +224,124 @@ class PayController extends Controller
         return $result;
     }
 
-//---------------------------------------------------------------用到的函数------------------------------------------------------------
 
+    /**
+     * TODO 微信申请退款操作
+     * 重要变量：
+     *      $order_sn = '2018000082009' 自己服务器的订单编号
+     *      $refund_fee                 需要退款的金额 (例:10.50)
+     *      $wxPayResultJsonRes         前期微信支付成功后回调保存的数据，
+     *                                  原本在数据库中以 json字符串的形式保存，
+     *                                  此处是取出后再 json_decode('xxxx',true)转化为了arr数组形式
+     * 据库中以 json字符串的形式为 ————
+     * {"appid":"wx87xxxxxxxxbc0","bank_type":"CFT",
+     * "cash_fee":"2","fee_type":"CNY","is_subscribe":"N",
+     * "mch_id":"1xxxxxx02","nonce_str":"t8wcdduity6f6k5acng33wzv5z56o7sh",
+     * "openid":"okxsf5YWzAzEPNoV31IRqft-fa1c","out_trade_no":"201xxxxxx2709M15362284007942",
+     * "result_code":"SUCCESS","return_code":"SUCCESS","time_end":"20180906180644",
+     * "total_fee":"2","trade_type":"JSAPI","transaction_id":"4200000171201809060657362048"}
+     */
+    public function payRefund(){
+        $config = $this->config;
+        $order_sn = I('post.sn')?I('post.sn'):'';
+        $refund_fee = I('post.refund_fee')?I('post.refund_fee'):'0';
+
+        /*-----TODO 此处是我项目业务的特定处理逻辑，仅供参考---------------高能注释------------------*/
+        $orderModel = new OrderModel();
+        //$wxPayResultJsonRes 请参考上面的介绍，自行获取
+        $wxPayResultJsonRes = $orderModel->getWxPayResultJsonRes($order_sn);
+        /*-----------------------------------------------------------------------------------*/
+        if ($wxPayResultJsonRes && $refund_fee){
+            $out_trade_no = $wxPayResultJsonRes['out_trade_no'];
+            //$out_refund_no 商户退款单号 自定义而已
+            $out_refund_no = $order_sn.'refund'.time();
+            $total_fee = $wxPayResultJsonRes['total_fee'];
+
+            //统一下单退款参数构造
+            $unifiedorder = array(
+                'appid' => $config['appid'],
+                'mch_id' => $config['pay_mchid'],
+                'nonce_str' => self::getNonceStr(),
+                'out_trade_no' => $out_trade_no,
+                'out_refund_no' => $out_refund_no,
+                'total_fee' => $total_fee,
+                'refund_fee' => intval(floatval($refund_fee) * 100),
+            );
+            $unifiedorder['sign'] = self::makeSign($unifiedorder);
+            //请求数据
+            $xmldata = self::array2xml($unifiedorder);
+            $opUrl = "https://api.mch.weixin.qq.com/secapi/pay/refund";
+            $res = self::curl_post_ssl_refund($opUrl, $xmldata);
+            if (!$res) {
+                self::return_err("Can't connect the server");
+            }
+            $content = self::xml2array($res);
+            if (strval($content['result_code']) == 'FAIL') {
+                self::return_err(strval($content['err_code_des']));
+            }
+            if (strval($content['return_code']) == 'FAIL') {
+                self::return_err(strval($content['return_msg']));
+            }
+            self::return_data(array('data' => $content));
+        }else{
+            self::return_err('不符合退款订单！');
+        }
+    }
+
+    //---------------------------------------------------------------用到的函数------------------------------------------------------------
+
+    /**
+     * 此方法是为了进行 微信退款操作的 专属定制哦
+     * (嘁，其实就是照搬了 人家官方的PHP Demo代码咯)
+     * TODO 尤其注意代码中涉及到的 "证书使用方式（二选一）"
+     * TODO 证书的路径要求为 服务器中的绝对路径[我的服务器为 Centos6.5]
+     * TODO 证书是 在微信支付开发文档中有所提及，可自行获取保存
+     */
+    protected function curl_post_ssl_refund($url, $vars, $second=30,$aHeader=array())
+    {
+        $ch = curl_init();
+        //超时时间
+        curl_setopt($ch,CURLOPT_TIMEOUT,$second);
+        curl_setopt($ch,CURLOPT_RETURNTRANSFER, 1);
+        //这里设置代理，如果有的话
+        //curl_setopt($ch,CURLOPT_PROXY, '10.206.30.98');
+        //curl_setopt($ch,CURLOPT_PROXYPORT, 8080);
+        curl_setopt($ch,CURLOPT_URL,$url);
+        curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
+        curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,false);
+
+        //TODO 以下两种方式需选择一种
+        /*------- --第一种方法，cert 与 key 分别属于两个.pem文件--------------------------------*/
+        //默认格式为PEM，可以注释
+        //curl_setopt($ch,CURLOPT_SSLCERTTYPE,'PEM');
+        curl_setopt($ch,CURLOPT_SSLCERT,'/mnt/www/Public/certxxxxxxxxxxxxxxxxxxxx755/apiclient_cert.pem');
+        //默认格式为PEM，可以注释
+        //curl_setopt($ch,CURLOPT_SSLKEYTYPE,'PEM');
+        curl_setopt($ch,CURLOPT_SSLKEY,'/mnt/www/Public/certxxxxxxxxxxxxxxxxxxxx755/apiclient_key.pem');
+        //补充 当找不到ca根证书的时候还需要rootca.pem文件
+        curl_setopt($ch, CURLOPT_CAINFO,'/mnt/www/Public/certxxxxxxxxxxxxxxxxxxxx755/rootca.pem');
+
+        /*----------第二种方式，两个文件合成一个.pem文件----------------------------------------*/
+        //curl_setopt($ch,CURLOPT_SSLCERT,getcwd().'/all.pem');
+
+        if( count($aHeader) >= 1 ){
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $aHeader);
+        }
+
+        curl_setopt($ch,CURLOPT_POST, 1);
+        curl_setopt($ch,CURLOPT_POSTFIELDS,$vars);
+        $data = curl_exec($ch);
+        if($data){
+            curl_close($ch);
+            return $data;
+        }
+        else {
+            $error = curl_errno($ch);
+            echo "call faild, errorCode:$error\n";
+            curl_close($ch);
+            return false;
+        }
+    }
     /**
      * 错误返回提示
      * @param string $errMsg 错误信息
