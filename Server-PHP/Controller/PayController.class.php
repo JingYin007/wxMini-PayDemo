@@ -336,7 +336,7 @@ class PayController extends Controller
         }
         else {
             $error = curl_errno($ch);
-            echo "call faild, errorCode:$error\n";
+            //echo "call faild, errorCode:$error\n";
             curl_close($ch);
             return false;
         }
