@@ -234,12 +234,12 @@ class PayController extends Controller
      *                                  原本在数据库中以 json字符串的形式保存，
      *                                  此处是取出后再 json_decode('xxxx',true)转化为了arr数组形式
      * 据库中以 json字符串的形式为 ————
-     * {"appid":"wx87xxxxxxxxbc0","bank_type":"CFT",
-     * "cash_fee":"2","fee_type":"CNY","is_subscribe":"N",
-     * "mch_id":"1xxxxxx02","nonce_str":"t8wcdduity6f6k5acng33wzv5z56o7sh",
-     * "openid":"okxsf5YWzAzEPNoV31IRqft-fa1c","out_trade_no":"201xxxxxx2709M15362284007942",
-     * "result_code":"SUCCESS","return_code":"SUCCESS","time_end":"20180906180644",
-     * "total_fee":"2","trade_type":"JSAPI","transaction_id":"4200000171201809060657362048"}
+         * {"appid":"wx87xxxxxxxxbc0","bank_type":"CFT",
+         * "cash_fee":"2","fee_type":"CNY","is_subscribe":"N",
+         * "mch_id":"1xxxxxx02","nonce_str":"t8wcdduity6f6k5acng33wzv5z56o7sh",
+         * "openid":"okxsf5YWzAzEPNoV31IRqft-fa1c","out_trade_no":"201xxxxxx2709M15362284007942",
+         * "result_code":"SUCCESS","return_code":"SUCCESS","time_end":"20180906180644",
+         * "total_fee":"2","trade_type":"JSAPI","transaction_id":"4200000171201809060657362048"}
      */
     public function payRefund(){
         $config = $this->config;
@@ -294,7 +294,7 @@ class PayController extends Controller
      * 此方法是为了进行 微信退款操作的 专属定制哦
      * (嘁，其实就是照搬了 人家官方的PHP Demo代码咯)
      * TODO 尤其注意代码中涉及到的 "证书使用方式（二选一）"
-     * TODO 证书的路径要求为 服务器中的绝对路径[我的服务器为 Centos6.5]
+     * TODO 证书的路径要求为 服务器中的绝对路径[我的服务器为 CentOS6.5]
      * TODO 证书是 在微信支付开发文档中有所提及，可自行获取保存
      */
     protected function curl_post_ssl_refund($url, $vars, $second=30,$aHeader=array())
@@ -309,7 +309,6 @@ class PayController extends Controller
         curl_setopt($ch,CURLOPT_URL,$url);
         curl_setopt($ch,CURLOPT_SSL_VERIFYPEER,false);
         curl_setopt($ch,CURLOPT_SSL_VERIFYHOST,false);
-
         //TODO 以下两种方式需选择一种
         /*------- --第一种方法，cert 与 key 分别属于两个.pem文件--------------------------------*/
         //默认格式为PEM，可以注释
