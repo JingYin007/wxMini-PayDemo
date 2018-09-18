@@ -317,8 +317,13 @@ class PayController extends Controller
         //默认格式为PEM，可以注释
         //curl_setopt($ch,CURLOPT_SSLKEYTYPE,'PEM');
         curl_setopt($ch,CURLOPT_SSLKEY,'/mnt/www/Public/certxxxxxxxxxxxxxxxxxxxx755/apiclient_key.pem');
-        //补充 当找不到ca根证书的时候还需要rootca.pem文件
-        curl_setopt($ch, CURLOPT_CAINFO,'/mnt/www/Public/certxxxxxxxxxxxxxxxxxxxx755/rootca.pem');
+        /**
+         * 补充 当找不到ca根证书的时候还需要rootca.pem文件
+         * TODO 注意，微信给出的压缩包中，有提示信息：
+         *      由于绝大部分操作系统已内置了微信支付服务器证书的根CA证书,
+         *      2018年3月6日后, 不再提供CA证书文件（rootca.pem）下载
+         */
+        //curl_setopt($ch, CURLOPT_CAINFO,'/mnt/www/Public/certxxxxxxxxxxxxxxxxxxxx755/rootca.pem');
 
         /*----------第二种方式，两个文件合成一个.pem文件----------------------------------------*/
         //curl_setopt($ch,CURLOPT_SSLCERT,getcwd().'/all.pem');
