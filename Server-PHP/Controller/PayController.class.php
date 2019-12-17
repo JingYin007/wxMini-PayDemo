@@ -263,8 +263,10 @@ class PayController extends Controller
                 'mch_id' => $config['pay_mchid'],
                 'nonce_str' => self::getNonceStr(),
                 'out_trade_no' => $out_trade_no,
+                // out_refund_no 这个建议要唯一，避免出现请求一次，实际退款两次的情况
                 'out_refund_no' => $out_refund_no,
                 'total_fee' => $total_fee,
+                //此处refund_fee 注意前面不要使用 number_format（）转化成字符串 ，或者更改为： number_format(5000, 2, '.', '')
                 'refund_fee' => intval(floatval($refund_fee) * 100),
             );
             $unifiedorder['sign'] = self::makeSign($unifiedorder);
@@ -276,10 +278,10 @@ class PayController extends Controller
                 self::return_err("Can't connect the server");
             }
             $content = self::xml2array($res);
-            if (strval($content['result_code']) == 'FAIL') {
+            if (isset($content['result_code']) && strval($content['result_code']) == 'FAIL') {
                 self::return_err(strval($content['err_code_des']));
             }
-            if (strval($content['return_code']) == 'FAIL') {
+            if (isset($content['return_code']) && strval($content['return_code']) == 'FAIL') {
                 self::return_err(strval($content['return_msg']));
             }
             self::return_data(array('data' => $content));
